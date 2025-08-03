@@ -49,9 +49,11 @@ setup(
         "pandas",
         "scipy",
         "sentinelsat",
-        "pyproj",
-        "fiona",
-    ],
+          "pyproj",
+          "fiona",
+          "scikit-image",
+          "opencv-python",
+      ],
 )
 '''
     with open('./SAR4CET/setup.py', 'w') as f:
@@ -118,6 +120,8 @@ setup(
          "sentinelsat",
          "pyproj",
          "fiona",
+         "scikit-image",
+         "opencv-python",
      ],
 )
 '''

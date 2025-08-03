@@ -9,7 +9,7 @@ shapely>=1.7.0
 # sentinel1-rtc>=0.1.0  # Package not available, commented out
 
 # Earth observation specific libraries
-earth-engine-api>=0.1.0
+# earth-engine-api>=0.1.0  # Package not available, commented out
 sentinelsat>=1.1.0
 pyproj>=3.1.0
 fiona>=1.8.0
