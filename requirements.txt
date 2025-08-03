@@ -6,7 +6,7 @@ scipy>=1.7.0
 rasterio>=1.2.0
 geopandas>=0.9.0
 shapely>=1.7.0
-sentinel1-rtc>=0.1.0
+# sentinel1-rtc>=0.1.0  # Package not available, commented out
 
 # Earth observation specific libraries
 earth-engine-api>=0.1.0
