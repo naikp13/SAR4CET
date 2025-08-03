@@ -1,10 +1,6 @@
-# SAR4CET - Synthetic Aperture Radar for Change Detection Toolkit
+# SAR4CET - Synthetic Aperture Radar to support Clean Energy Transition 
 
-SAR4CET is a toolkit for automated change detection using Sentinel-1 SAR imagery. This toolkit provides tools and utilities to process Sentinel-1 data and detect changes in land cover, urban areas, natural disasters, and oil reservoirs.
-
-## Overview
-
-Sentinel-1 is a C-band Synthetic Aperture Radar (SAR) satellite constellation that provides all-weather, day-and-night imagery, making it ideal for monitoring Earth's surface regardless of cloud cover or lighting conditions. This toolkit leverages Sentinel-1 data to detect changes over time.
+SAR4CET is repository developed under the Plan4CET project at the Insitute for Renewable Energy, EURAC Research. It provides is a toolkit for automated change detection using primarily Sentinel-1 SAR data and a scope of integration with other remote sensing modalities to improve the end product. This toolkit provides tools and utilities to process Sentinel-1 data and detect changes in land cover, urban areas, natural disasters, and oil reservoirs.
 
 ## Features
 
@@ -88,11 +84,8 @@ print(f"Detected {len(anomalies['anomalies'])} anomalies")
 
 See the `examples` directory for more detailed examples.
 
-## References
-
-- Conradsen, K., Nielsen, A.A., Skriver, H. (2016). Determining the points of change in time series of polarimetric SAR data. IEEE Transactions on Geoscience and Remote Sensing.
-- Meyer, F.J. et al. (2018). An Automatic Flood Monitoring Service from Sentinel-1 SAR: Products, Delivery Pipelines, and Performance Assessment. IGARSS 2018.
-
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+
