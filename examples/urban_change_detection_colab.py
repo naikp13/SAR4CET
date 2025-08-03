@@ -163,7 +163,16 @@ setup(
         # Override specific functions needed for the script
         def omnibus_test(image_stack, alpha=0.01):
             """Stub implementation of omnibus test"""
-            return (image_stack > 0).astype(int)  # Simple thresholding as placeholder
+            # Create a simple change map using thresholding
+            change_map = (image_stack > 0).astype(int)
+            
+            # Return dictionary format expected by plot_changes
+            rows, cols = image_stack.shape[1], image_stack.shape[2]
+            return {
+                'first_change': np.zeros((rows, cols), dtype=np.uint8),
+                'change_frequency': change_map[0],  # Use first image as change frequency
+                'change_magnitude': change_map[0].astype(np.float32)  # Use first image as magnitude
+            }
         
         change_detection.omnibus_test = omnibus_test
         
