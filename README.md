@@ -2,6 +2,8 @@
 
 SAR4CET is repository developed under the Plan4CET project at the Insitute for Renewable Energy, EURAC Research. It provides is a toolkit for automated change detection using primarily Sentinel-1 SAR data and a scope of integration with other remote sensing modalities to improve the end product. This toolkit provides tools and utilities to process Sentinel-1 data and detect changes in land cover, urban areas, natural disasters, and oil reservoirs.
 
+<img src="https://raw.githubusercontent.com/naikp13/XAI4EO/main/plan4cet.pngf" alt="XAI" width="800"/>
+
 ## Features
 
 - Download and preprocess Sentinel-1 SAR imagery
