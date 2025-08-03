@@ -177,10 +177,22 @@ setup(
         change_detection.omnibus_test = omnibus_test
         
         # Define visualization functions
-        def plot_changes(change_map, ax=None, title="Change Detection Results"):
+        def plot_changes(change_data, ax=None, title="Change Detection Results"):
             """Stub implementation of plot_changes"""
             if ax is None:
                 fig, ax = plt.subplots(figsize=(10, 8))
+            
+            # Handle both dictionary and array inputs
+            if isinstance(change_data, dict):
+                # Use change_frequency as the main display
+                change_map = change_data.get('change_frequency', change_data.get('first_change', list(change_data.values())[0]))
+            else:
+                change_map = change_data
+            
+            # Ensure the data is numeric and 2D
+            if hasattr(change_map, 'dtype') and change_map.dtype == 'object':
+                change_map = change_map.astype(np.float32)
+            
             ax.imshow(change_map, cmap='viridis')
             ax.set_title(title)
             ax.set_axis_off()
@@ -206,6 +218,9 @@ setup(
             # Create a simple RGB composite
             rgb = np.zeros((images[0].shape[0], images[0].shape[1], 3))
             for i, img in enumerate(images[:3]):
+                # Ensure the image is numeric
+                if hasattr(img, 'dtype') and img.dtype == 'object':
+                    img = img.astype(np.float32)
                 rgb[:, :, i] = img
             
             # Simple stretch
