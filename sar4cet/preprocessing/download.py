@@ -11,16 +11,23 @@ except ImportError:
     SENTINELSAT_AVAILABLE = False
     print("Warning: SentinelSat not available. Using direct API implementation.")
 
-def get_access_token(username, password):
+def get_access_token(username=None, password=None, client_id=None, client_secret=None):
     """
     Get OAuth2 access token for Copernicus Dataspace API.
     
+    Supports both username/password and OAuth2 client credentials authentication.
+    For downloads, OAuth2 client credentials are recommended.
+    
     Parameters
     ----------
-    username : str
-        Copernicus Dataspace username
-    password : str
-        Copernicus Dataspace password
+    username : str, optional
+        Copernicus Dataspace username (for password grant)
+    password : str, optional
+        Copernicus Dataspace password (for password grant)
+    client_id : str, optional
+        OAuth2 client ID (for client credentials grant)
+    client_secret : str, optional
+        OAuth2 client secret (for client credentials grant)
         
     Returns
     -------
@@ -32,19 +39,28 @@ def get_access_token(username, password):
     Exception
         If token creation fails
     """
-    data = {
-        "client_id": "cdse-public",
-        "username": username,
-        "password": password,
-        "grant_type": "password",
-    }
+    token_url = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+    
+    # Try OAuth2 client credentials first (recommended for downloads)
+    if client_id and client_secret:
+        data = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "grant_type": "client_credentials",
+        }
+    elif username and password:
+        # Fallback to username/password (mainly for search)
+        data = {
+            "client_id": "cdse-public",
+            "username": username,
+            "password": password,
+            "grant_type": "password",
+        }
+    else:
+        raise ValueError("Either (client_id, client_secret) or (username, password) must be provided")
     
     try:
-        response = requests.post(
-            "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
-            data=data,
-            timeout=30
-        )
+        response = requests.post(token_url, data=data, timeout=30)
         response.raise_for_status()
         return response.json()["access_token"]
     except requests.exceptions.RequestException as e:
@@ -263,26 +279,36 @@ def search_sentinel1(aoi, start_date, end_date, polarization='VV VH', product_ty
         
     Notes
     -----
-    Requires registration at https://dataspace.copernicus.eu/ and setting
-    COPERNICUS_USER and COPERNICUS_PASSWORD environment variables.
+    Requires registration at https://dataspace.copernicus.eu/ and setting either:
+    - COPERNICUS_CLIENT_ID and COPERNICUS_CLIENT_SECRET (OAuth2 - recommended)
+    - COPERNICUS_USER and COPERNICUS_PASSWORD (username/password - fallback)
     """
-    # Get credentials from environment variables
+    # Try OAuth2 client credentials first
+    client_id = os.environ.get('COPERNICUS_CLIENT_ID')
+    client_secret = os.environ.get('COPERNICUS_CLIENT_SECRET')
+    
+    # Fallback to username/password
     user = os.environ.get('COPERNICUS_USER')
     password = os.environ.get('COPERNICUS_PASSWORD')
     
-    if not user or not password:
+    if not ((client_id and client_secret) or (user and password)):
         raise ValueError(
-            "Please set COPERNICUS_USER and COPERNICUS_PASSWORD environment variables.\n"
+            "Please set either:\n"
+            "- COPERNICUS_CLIENT_ID and COPERNICUS_CLIENT_SECRET (OAuth2 - recommended)\n"
+            "- COPERNICUS_USER and COPERNICUS_PASSWORD (username/password - fallback)\n"
             "Register at https://dataspace.copernicus.eu/ to get credentials for the new Copernicus Dataspace.\n"
             "\n"
             "To set environment variables:\n"
-            "export COPERNICUS_USER='your_username'\n"
-            "export COPERNICUS_PASSWORD='your_password'"
+            "export COPERNICUS_CLIENT_ID='your_client_id'\n"
+            "export COPERNICUS_CLIENT_SECRET='your_client_secret'"
         )
     
     try:
         # Get OAuth2 access token
-        access_token = get_access_token(user, password)
+        if client_id and client_secret:
+            access_token = get_access_token(client_id=client_id, client_secret=client_secret)
+        else:
+            access_token = get_access_token(username=user, password=password)
         
         # Use direct API search
         products = _search_products_direct_api(
@@ -302,9 +328,10 @@ def search_sentinel1(aoi, start_date, end_date, polarization='VV VH', product_ty
         print(f"Error during search: {e}")
         print("\nTroubleshooting steps:")
         print("1. Verify your credentials by logging into https://dataspace.copernicus.eu/")
-        print("2. Ensure your account is activated (check your email for activation link)")
-        print("3. Try setting your environment variables again")
-        print("4. If the issue persists, try resetting your password on the website")
+        print("2. For OAuth2: Create an OAuth client in your account settings")
+        print("3. Ensure your account is activated (check your email for activation link)")
+        print("4. Try setting your environment variables again")
+        print("5. If the issue persists, try resetting your password on the website")
         raise
 
 def download_sentinel1(aoi, start_date, end_date, download_dir='data', max_products=None, **kwargs):
@@ -354,12 +381,17 @@ def download_sentinel1(aoi, start_date, end_date, download_dir='data', max_produ
     os.makedirs(download_dir, exist_ok=True)
     
     # Get credentials and access token
+    client_id = os.environ.get('COPERNICUS_CLIENT_ID')
+    client_secret = os.environ.get('COPERNICUS_CLIENT_SECRET')
     user = os.environ.get('COPERNICUS_USER')
     password = os.environ.get('COPERNICUS_PASSWORD')
     
     try:
         # Get OAuth2 access token
-        access_token = get_access_token(user, password)
+        if client_id and client_secret:
+            access_token = get_access_token(client_id=client_id, client_secret=client_secret)
+        else:
+            access_token = get_access_token(username=user, password=password)
         
         # Download products using direct API
         print(f"Downloading {len(products)} products to {download_dir}...")
@@ -410,7 +442,10 @@ def download_sentinel1(aoi, start_date, end_date, download_dir='data', max_produ
                     print("  Trying to refresh access token...")
                     
                     # Refresh token and retry
-                    access_token = get_access_token(user, password)
+                    if client_id and client_secret:
+                        access_token = get_access_token(client_id=client_id, client_secret=client_secret)
+                    else:
+                        access_token = get_access_token(username=user, password=password)
                     headers = {'Authorization': f'Bearer {access_token}'}
                     
                     response = requests.get(download_url, headers=headers, stream=True, timeout=300)
