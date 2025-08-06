@@ -8,6 +8,9 @@ def search_sentinel1(aoi, start_date, end_date, polarization='VV VH', product_ty
     """
     Search for Sentinel-1 data based on area of interest and time period.
     
+    Uses the new Copernicus Dataspace API (https://dataspace.copernicus.eu/)
+    which replaced the old SciHub service.
+    
     Parameters
     ----------
     aoi : list
@@ -25,20 +28,29 @@ def search_sentinel1(aoi, start_date, end_date, polarization='VV VH', product_ty
     -------
     dict
         Dictionary of search results
+        
+    Notes
+    -----
+    Requires registration at https://dataspace.copernicus.eu/ and setting
+    COPERNICUS_USER and COPERNICUS_PASSWORD environment variables.
     """
     # Convert AOI to WKT format
     footprint = box(aoi[0], aoi[1], aoi[2], aoi[3])
     footprint_wkt = footprint.wkt
     
-    # Connect to Copernicus Open Access Hub
+    # Connect to Copernicus Dataspace
     # Note: Requires user to set COPERNICUS_USER and COPERNICUS_PASSWORD environment variables
     user = os.environ.get('COPERNICUS_USER')
     password = os.environ.get('COPERNICUS_PASSWORD')
     
     if not user or not password:
-        raise ValueError("Please set COPERNICUS_USER and COPERNICUS_PASSWORD environment variables")
+        raise ValueError(
+            "Please set COPERNICUS_USER and COPERNICUS_PASSWORD environment variables.\n"
+            "Register at https://dataspace.copernicus.eu/ to get credentials for the new Copernicus Dataspace."
+        )
     
-    api = SentinelAPI(user, password, 'https://scihub.copernicus.eu/dhus')
+    # Use the new Copernicus Dataspace API endpoint
+    api = SentinelAPI(user, password, 'https://catalogue.dataspace.copernicus.eu/odata/v1')
     
     # Convert dates to datetime objects
     start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d')
@@ -60,6 +72,8 @@ def download_sentinel1(aoi, start_date, end_date, download_dir='data', **kwargs)
     """
     Download Sentinel-1 data based on area of interest and time period.
     
+    Uses the new Copernicus Dataspace API for downloading.
+    
     Parameters
     ----------
     aoi : list
@@ -77,6 +91,11 @@ def download_sentinel1(aoi, start_date, end_date, download_dir='data', **kwargs)
     -------
     list
         List of downloaded file paths
+        
+    Notes
+    -----
+    Requires registration at https://dataspace.copernicus.eu/ and setting
+    COPERNICUS_USER and COPERNICUS_PASSWORD environment variables.
     """
     # Search for Sentinel-1 data
     products = search_sentinel1(aoi, start_date, end_date, **kwargs)
@@ -88,10 +107,10 @@ def download_sentinel1(aoi, start_date, end_date, download_dir='data', **kwargs)
     # Create download directory if it doesn't exist
     os.makedirs(download_dir, exist_ok=True)
     
-    # Connect to Copernicus Open Access Hub
+    # Connect to Copernicus Dataspace
     user = os.environ.get('COPERNICUS_USER')
     password = os.environ.get('COPERNICUS_PASSWORD')
-    api = SentinelAPI(user, password, 'https://scihub.copernicus.eu/dhus')
+    api = SentinelAPI(user, password, 'https://catalogue.dataspace.copernicus.eu/odata/v1')
     
     # Download products
     print(f"Downloading {len(products)} products to {download_dir}...")
