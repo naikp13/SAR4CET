@@ -5,259 +5,71 @@ import pandas as pd
 from urllib.parse import quote
 from shapely.geometry import box
 try:
+    import openeo
+    OPENEO_AVAILABLE = True
+except ImportError:
+    OPENEO_AVAILABLE = False
+    print("Warning: openEO not available. Please install with: pip install openeo")
+
+try:
     from sentinelsat import SentinelAPI
     SENTINELSAT_AVAILABLE = True
 except ImportError:
     SENTINELSAT_AVAILABLE = False
-    print("Warning: SentinelSat not available. Using direct API implementation.")
+    print("Warning: SentinelSat not available. Using openEO implementation.")
 
-def get_access_token(username=None, password=None, client_id=None, client_secret=None):
+def get_openeo_connection(client_id=None, client_secret=None):
     """
-    Get OAuth2 access token for Copernicus Dataspace API.
-    
-    Supports both username/password and OAuth2 client credentials authentication.
-    For downloads, OAuth2 client credentials are recommended.
+    Get authenticated openEO connection for Copernicus Dataspace.
     
     Parameters
     ----------
-    username : str, optional
-        Copernicus Dataspace username (for password grant)
-    password : str, optional
-        Copernicus Dataspace password (for password grant)
     client_id : str, optional
-        OAuth2 client ID (for client credentials grant)
+        OAuth2 client ID for service account authentication
     client_secret : str, optional
-        OAuth2 client secret (for client credentials grant)
+        OAuth2 client secret for service account authentication
         
     Returns
     -------
-    str
-        Access token for API authentication
+    openeo.Connection
+        Authenticated openEO connection
         
     Raises
     ------
     Exception
-        If token creation fails
+        If connection or authentication fails
     """
-    token_url = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
-    
-    # Try OAuth2 client credentials first (recommended for downloads)
-    if client_id and client_secret:
-        data = {
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "grant_type": "client_credentials",
-        }
-    elif username and password:
-        # Fallback to username/password (mainly for search)
-        data = {
-            "client_id": "cdse-public",
-            "username": username,
-            "password": password,
-            "grant_type": "password",
-        }
-    else:
-        raise ValueError("Either (client_id, client_secret) or (username, password) must be provided")
+    if not OPENEO_AVAILABLE:
+        raise ImportError("openEO is required. Install with: pip install openeo")
     
     try:
-        response = requests.post(token_url, data=data, timeout=30)
-        response.raise_for_status()
-        return response.json()["access_token"]
-    except requests.exceptions.RequestException as e:
-        raise Exception(
-            f"Failed to get access token. Error: {e}\n"
-            f"Please check your credentials and ensure you have registered at https://dataspace.copernicus.eu/\n"
-            f"If you continue to have issues, try logging in to the website first to verify your account is active."
-        )
-    except KeyError:
-        raise Exception(
-            f"Invalid response from authentication server. Response: {response.text}\n"
-            f"Please verify your credentials are correct."
-        )
-
-def _search_products_direct_api(access_token, aoi, start_date, end_date, platform='Sentinel-1', product_type='GRD', polarization='VV VH', limit=100):
-    """
-    Search for products using direct Copernicus Dataspace API calls.
-    
-    Parameters
-    ----------
-    access_token : str
-        OAuth2 access token
-    aoi : list
-        Area of interest as [lon_min, lat_min, lon_max, lat_max]
-    start_date : str
-        Start date in format 'YYYY-MM-DD'
-    end_date : str
-        End date in format 'YYYY-MM-DD'
-    platform : str
-        Platform name (e.g., 'Sentinel-1', 'Sentinel-2')
-    product_type : str
-        Product type (e.g., 'GRD', 'SLC')
-    polarization : str
-        Polarization mode
-    limit : int
-        Maximum number of products to return
+        # Connect to Copernicus Dataspace openEO backend
+        connection = openeo.connect("openeo.dataspace.copernicus.eu")
         
-    Returns
-    -------
-    dict
-        Dictionary of products in SentinelSat-compatible format
-    """
-    base_url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
-    headers = {'Authorization': f'Bearer {access_token}'}
-    
-    # Build filter for platform and date range
-    filters = []
-    
-    # Platform filter
-    if platform == 'Sentinel-1':
-        filters.append("Collection/Name eq 'SENTINEL-1'")
-    elif platform == 'Sentinel-2':
-        filters.append("Collection/Name eq 'SENTINEL-2'")
-    elif platform == 'Sentinel-3':
-        filters.append("Collection/Name eq 'SENTINEL-3'")
-    
-    # Date filter
-    if start_date and end_date:
-        filters.append(f"ContentDate/Start ge {start_date}T00:00:00.000Z")
-        filters.append(f"ContentDate/Start le {end_date}T23:59:59.999Z")
-    
-    # Product type filter (for Sentinel-1)
-    if platform == 'Sentinel-1' and product_type:
-        # Note: Product type filtering might need adjustment based on API capabilities
-        pass  # Will be handled in post-processing if needed
-    
-    # Combine filters
-    filter_str = " and ".join(filters)
-    
-    # Build query parameters
-    params = {
-        '$top': limit,
-        '$orderby': 'ContentDate/Start desc'
-    }
-    
-    if filter_str:
-        params['$filter'] = filter_str
-    
-    try:
-        response = requests.get(base_url, headers=headers, params=params, timeout=60)
-        
-        if response.status_code == 200:
-            data = response.json()
-            raw_products = data.get('value', [])
-            
-            # Convert to SentinelSat-compatible format
-            products = {}
-            
-            for product in raw_products:
-                # Filter by AOI if specified
-                if aoi and not _product_intersects_aoi(product, aoi):
-                    continue
-                    
-                # Filter by product type and polarization if specified
-                if platform == 'Sentinel-1':
-                    if product_type and not _matches_product_type(product, product_type):
-                        continue
-                    if polarization and not _matches_polarization(product, polarization):
-                        continue
-                
-                product_id = product.get('Id')
-                if product_id:
-                    # Convert to SentinelSat format
-                    products[product_id] = {
-                        'title': product.get('Name', 'Unknown'),
-                        'size': product.get('ContentLength', 0),
-                        'beginposition': product.get('ContentDate', {}).get('Start', ''),
-                        'endposition': product.get('ContentDate', {}).get('End', ''),
-                        'footprint': product.get('Footprint', ''),
-                        'platformname': platform,
-                        'producttype': product_type,
-                        'uuid': product_id,
-                        'download_url': f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products({product_id})/$value"
-                    }
-                    
-                    # Add additional attributes
-                    attributes = product.get('Attributes', [])
-                    for attr in attributes:
-                        attr_name = attr.get('Name', '').lower()
-                        attr_value = attr.get('Value')
-                        if attr_name and attr_value:
-                            products[product_id][attr_name] = attr_value
-            
-            return products
+        if client_id and client_secret:
+            # Use OAuth2 client credentials (recommended)
+            connection.authenticate_oidc_client_credentials(
+                client_id=client_id,
+                client_secret=client_secret
+            )
+            print("✅ Authenticated with OAuth2 client credentials")
         else:
-            raise Exception(f"API request failed: {response.status_code} - {response.text[:500]}")
-            
+            # Interactive authentication fallback
+            connection.authenticate_oidc()
+            print("✅ Authenticated with interactive OIDC")
+        
+        return connection
+        
     except Exception as e:
-        raise Exception(f"API request error: {e}")
+        raise Exception(
+            f"Failed to connect to openEO backend. Error: {e}\n"
+            f"Please check your credentials and ensure you have registered at https://dataspace.copernicus.eu/\n"
+            f"For service accounts, create OAuth client credentials in your account settings."
+        )
 
-def _product_intersects_aoi(product, aoi):
+def search_sentinel1_openeo(aoi, start_date, end_date, polarization='VV,VH', product_type='GRD'):
     """
-    Check if product footprint intersects with area of interest.
-    
-    Parameters
-    ----------
-    product : dict
-        Product information from API
-    aoi : list
-        Area of interest as [lon_min, lat_min, lon_max, lat_max]
-        
-    Returns
-    -------
-    bool
-        True if product intersects AOI
-    """
-    # For now, return True (basic implementation)
-    # In a full implementation, you would parse the footprint geometry
-    # and check for intersection with the AOI
-    return True
-
-def _matches_product_type(product, product_type):
-    """
-    Check if product matches the specified product type.
-    
-    Parameters
-    ----------
-    product : dict
-        Product information from API
-    product_type : str
-        Desired product type
-        
-    Returns
-    -------
-    bool
-        True if product matches type
-    """
-    product_name = product.get('Name', '').upper()
-    return product_type.upper() in product_name
-
-def _matches_polarization(product, polarization):
-    """
-    Check if product matches the specified polarization.
-    
-    Parameters
-    ----------
-    product : dict
-        Product information from API
-    polarization : str
-        Desired polarization (e.g., 'VV VH')
-        
-    Returns
-    -------
-    bool
-        True if product matches polarization
-    """
-    # For now, return True (basic implementation)
-    # In a full implementation, you would check product attributes
-    # for polarization information
-    return True
-
-def search_sentinel1(aoi, start_date, end_date, polarization='VV VH', product_type='GRD'):
-    """
-    Search for Sentinel-1 data based on area of interest and time period.
-    
-    Uses the new Copernicus Dataspace API (https://dataspace.copernicus.eu/)
-    with direct API calls for maximum compatibility.
+    Search for Sentinel-1 data using openEO API.
     
     Parameters
     ----------
@@ -268,77 +80,89 @@ def search_sentinel1(aoi, start_date, end_date, polarization='VV VH', product_ty
     end_date : str
         End date in format 'YYYY-MM-DD'
     polarization : str, optional
-        Polarization mode, by default 'VV VH'
+        Polarization mode, by default 'VV,VH'
     product_type : str, optional
         Product type, by default 'GRD'
     
     Returns
     -------
     dict
-        Dictionary of search results compatible with SentinelSat format
+        Dictionary of search results with product information
         
     Notes
     -----
-    Requires registration at https://dataspace.copernicus.eu/ and setting either:
+    Requires registration at https://dataspace.copernicus.eu/ and setting:
     - COPERNICUS_CLIENT_ID and COPERNICUS_CLIENT_SECRET (OAuth2 - recommended)
-    - COPERNICUS_USER and COPERNICUS_PASSWORD (username/password - fallback)
+    Or using interactive authentication
     """
-    # Try OAuth2 client credentials first
+    # Get credentials
     client_id = os.environ.get('COPERNICUS_CLIENT_ID')
     client_secret = os.environ.get('COPERNICUS_CLIENT_SECRET')
     
-    # Fallback to username/password
-    user = os.environ.get('COPERNICUS_USER')
-    password = os.environ.get('COPERNICUS_PASSWORD')
-    
-    if not ((client_id and client_secret) or (user and password)):
-        raise ValueError(
-            "Please set either:\n"
-            "- COPERNICUS_CLIENT_ID and COPERNICUS_CLIENT_SECRET (OAuth2 - recommended)\n"
-            "- COPERNICUS_USER and COPERNICUS_PASSWORD (username/password - fallback)\n"
-            "Register at https://dataspace.copernicus.eu/ to get credentials for the new Copernicus Dataspace.\n"
-            "\n"
-            "To set environment variables:\n"
-            "export COPERNICUS_CLIENT_ID='your_client_id'\n"
-            "export COPERNICUS_CLIENT_SECRET='your_client_secret'"
-        )
-    
     try:
-        # Get OAuth2 access token
-        if client_id and client_secret:
-            access_token = get_access_token(client_id=client_id, client_secret=client_secret)
-        else:
-            access_token = get_access_token(username=user, password=password)
+        # Get openEO connection
+        connection = get_openeo_connection(client_id=client_id, client_secret=client_secret)
         
-        # Use direct API search
-        products = _search_products_direct_api(
-            access_token=access_token,
-            aoi=aoi,
-            start_date=start_date,
-            end_date=end_date,
-            platform='Sentinel-1',
-            product_type=product_type,
-            polarization=polarization
+        # Load Sentinel-1 collection
+        if product_type.upper() == 'GRD':
+            collection_id = "SENTINEL1_GRD"
+        elif product_type.upper() == 'SLC':
+            collection_id = "SENTINEL1_SLC"
+        else:
+            collection_id = "SENTINEL1_GRD"  # Default to GRD
+        
+        # Create spatial extent
+        spatial_extent = {
+            "west": aoi[0],
+            "south": aoi[1], 
+            "east": aoi[2],
+            "north": aoi[3]
+        }
+        
+        # Create temporal extent
+        temporal_extent = [start_date, end_date]
+        
+        # Load the collection
+        datacube = connection.load_collection(
+            collection_id,
+            spatial_extent=spatial_extent,
+            temporal_extent=temporal_extent,
+            bands=polarization.split(',') if polarization else None
         )
         
-        print(f"Found {len(products)} Sentinel-1 scenes")
-        return products
+        # Get collection metadata for search results
+        collection_info = connection.describe_collection(collection_id)
+        
+        print(f"✅ Successfully created datacube for {collection_id}")
+        print(f"   Spatial extent: {spatial_extent}")
+        print(f"   Temporal extent: {temporal_extent}")
+        print(f"   Polarization: {polarization}")
+        
+        # Return datacube and metadata
+        return {
+            'datacube': datacube,
+            'collection_info': collection_info,
+            'spatial_extent': spatial_extent,
+            'temporal_extent': temporal_extent,
+            'polarization': polarization,
+            'product_type': product_type
+        }
         
     except Exception as e:
         print(f"Error during search: {e}")
         print("\nTroubleshooting steps:")
         print("1. Verify your credentials by logging into https://dataspace.copernicus.eu/")
-        print("2. For OAuth2: Create an OAuth client in your account settings")
+        print("2. For OAuth2: Create an OAuth client in User Settings > OAuth clients")
         print("3. Ensure your account is activated (check your email for activation link)")
-        print("4. Try setting your environment variables again")
-        print("5. If the issue persists, try resetting your password on the website")
+        print("4. Install openEO: pip install openeo")
+        print("5. Try setting your environment variables:")
+        print("   export COPERNICUS_CLIENT_ID='your_client_id'")
+        print("   export COPERNICUS_CLIENT_SECRET='your_client_secret'")
         raise
 
-def download_sentinel1(aoi, start_date, end_date, download_dir='data', max_products=None, **kwargs):
+def download_sentinel1_openeo(aoi, start_date, end_date, download_dir='data', output_format='GTiff', **kwargs):
     """
-    Download Sentinel-1 data based on area of interest and time period.
-    
-    Uses the new Copernicus Dataspace API with direct downloads for maximum compatibility.
+    Download Sentinel-1 data using openEO API.
     
     Parameters
     ----------
@@ -350,10 +174,10 @@ def download_sentinel1(aoi, start_date, end_date, download_dir='data', max_produ
         End date in format 'YYYY-MM-DD'
     download_dir : str, optional
         Directory to download data to, by default 'data'
-    max_products : int, optional
-        Maximum number of products to download, by default None (all)
+    output_format : str, optional
+        Output format, by default 'GTiff'
     **kwargs : dict
-        Additional arguments to pass to search_sentinel1
+        Additional arguments to pass to search_sentinel1_openeo
     
     Returns
     -------
@@ -363,125 +187,224 @@ def download_sentinel1(aoi, start_date, end_date, download_dir='data', max_produ
     Notes
     -----
     Requires registration at https://dataspace.copernicus.eu/ and setting
-    COPERNICUS_USER and COPERNICUS_PASSWORD environment variables.
+    COPERNICUS_CLIENT_ID and COPERNICUS_CLIENT_SECRET environment variables.
     """
     # Search for Sentinel-1 data
-    products = search_sentinel1(aoi, start_date, end_date, **kwargs)
+    search_result = search_sentinel1_openeo(aoi, start_date, end_date, **kwargs)
     
-    if not products:
-        print("No products found")
+    if not search_result:
+        print("No data found")
         return []
-    
-    # Limit products if specified
-    if max_products and len(products) > max_products:
-        products = dict(list(products.items())[:max_products])
-        print(f"Limited to {max_products} products for download")
     
     # Create download directory if it doesn't exist
     os.makedirs(download_dir, exist_ok=True)
     
-    # Get credentials and access token
-    client_id = os.environ.get('COPERNICUS_CLIENT_ID')
-    client_secret = os.environ.get('COPERNICUS_CLIENT_SECRET')
-    user = os.environ.get('COPERNICUS_USER')
-    password = os.environ.get('COPERNICUS_PASSWORD')
-    
     try:
-        # Get OAuth2 access token
-        if client_id and client_secret:
-            access_token = get_access_token(client_id=client_id, client_secret=client_secret)
+        datacube = search_result['datacube']
+        
+        # Generate output filename
+        start_clean = start_date.replace('-', '')
+        end_clean = end_date.replace('-', '')
+        aoi_str = f"{aoi[0]:.2f}_{aoi[1]:.2f}_{aoi[2]:.2f}_{aoi[3]:.2f}"
+        filename = f"sentinel1_{search_result['product_type']}_{start_clean}_{end_clean}_{aoi_str}"
+        
+        if output_format.upper() == 'GTIFF':
+            filename += '.tif'
+        elif output_format.upper() == 'NETCDF':
+            filename += '.nc'
         else:
-            access_token = get_access_token(username=user, password=password)
+            filename += '.tif'  # Default to GeoTIFF
         
-        # Download products using direct API
-        print(f"Downloading {len(products)} products to {download_dir}...")
-        downloaded_files = []
+        filepath = os.path.join(download_dir, filename)
         
-        for i, (product_id, product_info) in enumerate(products.items(), 1):
-            try:
-                print(f"Downloading {i}/{len(products)}: {product_info['title']}")
-                
-                # Use direct download URL
-                download_url = product_info.get('download_url')
-                if not download_url:
-                    download_url = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products({product_id})/$value"
-                
-                # Download the product
-                headers = {'Authorization': f'Bearer {access_token}'}
-                
-                response = requests.get(download_url, headers=headers, stream=True, timeout=300)
-                
-                if response.status_code == 200:
-                    # Generate filename
-                    filename = product_info['title']
-                    if not filename.endswith('.zip'):
-                        filename += '.zip'
-                    
-                    filepath = os.path.join(download_dir, filename)
-                    
-                    # Download with progress
-                    total_size = int(response.headers.get('content-length', 0))
-                    downloaded_size = 0
-                    
-                    with open(filepath, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                                downloaded_size += len(chunk)
-                                
-                                # Simple progress indicator
-                                if total_size > 0:
-                                    progress = (downloaded_size / total_size) * 100
-                                    print(f"\r  Progress: {progress:.1f}%", end='', flush=True)
-                    
-                    print(f"\n  ✅ Downloaded: {filename}")
-                    downloaded_files.append(filepath)
-                    
-                elif response.status_code in [401, 403]:
-                    print(f"\n  ❌ Authentication error for {product_info['title']}")
-                    print("  Trying to refresh access token...")
-                    
-                    # Refresh token and retry
-                    if client_id and client_secret:
-                        access_token = get_access_token(client_id=client_id, client_secret=client_secret)
-                    else:
-                        access_token = get_access_token(username=user, password=password)
-                    headers = {'Authorization': f'Bearer {access_token}'}
-                    
-                    response = requests.get(download_url, headers=headers, stream=True, timeout=300)
-                    
-                    if response.status_code == 200:
-                        filename = product_info['title']
-                        if not filename.endswith('.zip'):
-                            filename += '.zip'
-                        
-                        filepath = os.path.join(download_dir, filename)
-                        
-                        with open(filepath, 'wb') as f:
-                            for chunk in response.iter_content(chunk_size=8192):
-                                if chunk:
-                                    f.write(chunk)
-                        
-                        print(f"  ✅ Downloaded after token refresh: {filename}")
-                        downloaded_files.append(filepath)
-                    else:
-                        print(f"  ❌ Failed even after token refresh: {response.status_code}")
-                        
-                else:
-                    print(f"\n  ❌ Download failed: {response.status_code} - {response.reason}")
-                    
-            except Exception as e:
-                print(f"\n  ❌ Error downloading {product_info['title']}: {e}")
-                continue
+        print(f"Downloading Sentinel-1 data to {filepath}...")
         
-        print(f"\n🎉 Successfully downloaded {len(downloaded_files)} out of {len(products)} products")
-        return downloaded_files
+        # Download the data
+        datacube.download(filepath, format=output_format)
+        
+        print(f"✅ Successfully downloaded: {filename}")
+        return [filepath]
         
     except Exception as e:
         print(f"Error during download: {e}")
         print("\nTroubleshooting steps:")
         print("1. Verify your credentials by logging into https://dataspace.copernicus.eu/")
-        print("2. Ensure your account is activated (check your email for activation link)")
-        print("3. Try setting your environment variables again")
-        print("4. If the issue persists, try resetting your password on the website")
+        print("2. Ensure your account is activated and has sufficient quota")
+        print("3. Try reducing the spatial or temporal extent")
+        print("4. Check if the requested data is available for your area and time period")
+        raise
+
+def process_sentinel1_openeo(aoi, start_date, end_date, processing_options=None, download_dir='data', **kwargs):
+    """
+    Process Sentinel-1 data using openEO with custom processing options.
+    
+    Parameters
+    ----------
+    aoi : list
+        Area of interest as [lon_min, lat_min, lon_max, lat_max]
+    start_date : str
+        Start date in format 'YYYY-MM-DD'
+    end_date : str
+        End date in format 'YYYY-MM-DD'
+    processing_options : dict, optional
+        Processing options like temporal reduction, filtering, etc.
+    download_dir : str, optional
+        Directory to download processed data to, by default 'data'
+    **kwargs : dict
+        Additional arguments
+    
+    Returns
+    -------
+    list
+        List of processed and downloaded file paths
+    """
+    # Search for Sentinel-1 data
+    search_result = search_sentinel1_openeo(aoi, start_date, end_date, **kwargs)
+    
+    if not search_result:
+        print("No data found")
+        return []
+    
+    # Create download directory if it doesn't exist
+    os.makedirs(download_dir, exist_ok=True)
+    
+    try:
+        datacube = search_result['datacube']
+        
+        # Apply processing options if provided
+        if processing_options:
+            if processing_options.get('temporal_reduction'):
+                # Apply temporal reduction (e.g., mean, median)
+                reduction_method = processing_options['temporal_reduction']
+                if reduction_method == 'mean':
+                    datacube = datacube.mean_time()
+                elif reduction_method == 'median':
+                    datacube = datacube.median_time()
+                elif reduction_method == 'max':
+                    datacube = datacube.max_time()
+                elif reduction_method == 'min':
+                    datacube = datacube.min_time()
+            
+            if processing_options.get('apply_mask'):
+                # Apply cloud mask or other masks
+                pass  # Implementation depends on specific requirements
+            
+            if processing_options.get('resample_resolution'):
+                # Resample to different resolution
+                resolution = processing_options['resample_resolution']
+                datacube = datacube.resample_spatial(resolution=resolution)
+        
+        # Generate output filename
+        start_clean = start_date.replace('-', '')
+        end_clean = end_date.replace('-', '')
+        aoi_str = f"{aoi[0]:.2f}_{aoi[1]:.2f}_{aoi[2]:.2f}_{aoi[3]:.2f}"
+        
+        processing_suffix = ""
+        if processing_options and processing_options.get('temporal_reduction'):
+            processing_suffix = f"_{processing_options['temporal_reduction']}"
+        
+        filename = f"sentinel1_processed_{search_result['product_type']}_{start_clean}_{end_clean}_{aoi_str}{processing_suffix}.tif"
+        filepath = os.path.join(download_dir, filename)
+        
+        print(f"Processing and downloading Sentinel-1 data to {filepath}...")
+        
+        # Download the processed data
+        datacube.download(filepath, format="GTiff")
+        
+        print(f"✅ Successfully processed and downloaded: {filename}")
+        return [filepath]
+        
+    except Exception as e:
+        print(f"Error during processing: {e}")
+        raise
+
+# Legacy function aliases for backward compatibility
+def search_sentinel1(aoi, start_date, end_date, polarization='VV,VH', product_type='GRD'):
+    """
+    Legacy function for backward compatibility.
+    Now uses openEO API instead of direct Copernicus API.
+    """
+    print("ℹ️  Using openEO API for Sentinel-1 data access")
+    return search_sentinel1_openeo(aoi, start_date, end_date, polarization, product_type)
+
+def download_sentinel1(aoi, start_date, end_date, download_dir='data', max_products=None, **kwargs):
+    """
+    Legacy function for backward compatibility.
+    Now uses openEO API instead of direct Copernicus API.
+    """
+    print("ℹ️  Using openEO API for Sentinel-1 data download")
+    if max_products:
+        print(f"⚠️  max_products parameter is not applicable with openEO API")
+    
+    return download_sentinel1_openeo(aoi, start_date, end_date, download_dir, **kwargs)
+
+# Utility functions for openEO
+def list_available_collections():
+    """
+    List available collections in the openEO backend.
+    
+    Returns
+    -------
+    list
+        List of available collection IDs
+    """
+    if not OPENEO_AVAILABLE:
+        raise ImportError("openEO is required. Install with: pip install openeo")
+    
+    client_id = os.environ.get('COPERNICUS_CLIENT_ID')
+    client_secret = os.environ.get('COPERNICUS_CLIENT_SECRET')
+    
+    try:
+        connection = get_openeo_connection(client_id=client_id, client_secret=client_secret)
+        collections = connection.list_collections()
+        
+        print("Available collections:")
+        for collection in collections:
+            print(f"  - {collection['id']}: {collection.get('title', 'No title')}")
+        
+        return [col['id'] for col in collections]
+        
+    except Exception as e:
+        print(f"Error listing collections: {e}")
+        raise
+
+def get_collection_info(collection_id):
+    """
+    Get detailed information about a specific collection.
+    
+    Parameters
+    ----------
+    collection_id : str
+        Collection ID (e.g., 'SENTINEL1_GRD')
+    
+    Returns
+    -------
+    dict
+        Collection metadata
+    """
+    if not OPENEO_AVAILABLE:
+        raise ImportError("openEO is required. Install with: pip install openeo")
+    
+    client_id = os.environ.get('COPERNICUS_CLIENT_ID')
+    client_secret = os.environ.get('COPERNICUS_CLIENT_SECRET')
+    
+    try:
+        connection = get_openeo_connection(client_id=client_id, client_secret=client_secret)
+        collection_info = connection.describe_collection(collection_id)
+        
+        print(f"Collection: {collection_id}")
+        print(f"Title: {collection_info.get('title', 'No title')}")
+        print(f"Description: {collection_info.get('description', 'No description')}")
+        
+        if 'extent' in collection_info:
+            extent = collection_info['extent']
+            if 'spatial' in extent:
+                print(f"Spatial extent: {extent['spatial']}")
+            if 'temporal' in extent:
+                print(f"Temporal extent: {extent['temporal']}")
+        
+        return collection_info
+        
+    except Exception as e:
+        print(f"Error getting collection info: {e}")
         raise
