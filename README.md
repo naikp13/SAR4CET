@@ -35,6 +35,29 @@ conda activate sar4cet
 pip install -r requirements.txt
 ```
 
+## Authentication Setup
+
+**Important:** SAR4CET now uses the new Copernicus Dataspace API for accessing Sentinel-1 data. The old SciHub API has been discontinued.
+
+### Setting up Copernicus Dataspace Access
+
+1. **Register for free** at: https://dataspace.copernicus.eu/
+2. **Set environment variables** with your credentials:
+   ```bash
+   export COPERNICUS_USER='your_username'
+   export COPERNICUS_PASSWORD='your_password'
+   ```
+3. **Restart your Python environment** after setting the variables
+
+### Verification
+
+You can verify your setup by running:
+```python
+import os
+print("COPERNICUS_USER:", os.getenv('COPERNICUS_USER'))
+print("COPERNICUS_PASSWORD:", "***" if os.getenv('COPERNICUS_PASSWORD') else "Not set")
+```
+
 ## Usage
 
 Basic example of change detection workflow:
