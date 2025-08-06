@@ -16,7 +16,6 @@ import rasterio
 from rasterio.plot import show
 
 # Import SAR4CET modules
-from sar4cet.preprocessing import search_sentinel1_openeo, download_sentinel1_openeo
 from sar4cet.change_detection import detect_changes
 from sar4cet.visualization import plot_changes, create_rgb_change_composite
 from sar4cet.utils import read_image, write_image

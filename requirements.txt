@@ -10,8 +10,6 @@ shapely>=1.7.0
 
 # Earth observation specific libraries
 # earth-engine-api>=0.1.0  # Package not available, commented out
-openeo>=0.22.0  # Primary API for Copernicus Dataspace access
-sentinelsat>=1.2.1  # Optional, for legacy compatibility
 pyproj>=3.1.0
 fiona>=1.8.0
 
