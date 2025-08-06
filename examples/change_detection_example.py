@@ -34,11 +34,12 @@ def main():
     os.makedirs('data', exist_ok=True)
     os.makedirs('results', exist_ok=True)
     
-    # Step 1: Download Sentinel-1 data
-    print("Searching for Sentinel-1 data...")
+    # Step 1: Download Sentinel-1 data using openEO API
+    print("Searching for Sentinel-1 data via openEO...")
     try:
-        # Note: This requires setting COPERNICUS_USER and COPERNICUS_PASSWORD environment variables
-        products = preprocessing.search_sentinel1(aoi, start_date, end_date)
+        # Note: This requires setting COPERNICUS_CLIENT_ID and COPERNICUS_CLIENT_SECRET environment variables
+        # Or will use interactive authentication if credentials are not set
+        products = preprocessing.search_sentinel1_openeo(aoi, start_date, end_date)
         
         if not products:
             print("No Sentinel-1 data found for the specified area and time period.")
@@ -48,7 +49,7 @@ def main():
         else:
             print(f"Found {len(products)} Sentinel-1 scenes.")
             print("Downloading data...")
-            input_files = preprocessing.download_sentinel1(aoi, start_date, end_date, download_dir='data')
+            input_files = preprocessing.download_sentinel1_openeo(aoi, start_date, end_date, download_dir='data')
     except Exception as e:
         print(f"Error downloading data: {e}")
         print("Using sample data for demonstration...")
