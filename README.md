@@ -6,7 +6,7 @@ SAR4CET is repository developed under the Plan4CET project (https://plan4cet.eu/
 
 ## Features
 
-- Download and preprocess Sentinel-1 SAR imagery
+- **openEO Integration**: Access Sentinel-1 SAR data through the standardized openEO API
 - Radiometric Terrain Correction (RTC) for SAR data
 - Change detection algorithms for multi-temporal SAR imagery
 - Visualization tools for change detection results
@@ -19,6 +19,7 @@ SAR4CET is repository developed under the Plan4CET project (https://plan4cet.eu/
   - Storage tank volume estimation and change detection
   - Traffic and logistics activity analysis
   - Operational anomaly detection
+- **New**: Urban change detection notebook for New Delhi using openEO API
 
 ## Installation
 
@@ -37,30 +38,56 @@ pip install -r requirements.txt
 
 ## Authentication Setup
 
-**Important:** SAR4CET now uses the new Copernicus Dataspace API for accessing Sentinel-1 data. The old SciHub API has been discontinued.
+**Important:** SAR4CET now uses the openEO API for accessing Sentinel-1 data through Copernicus Dataspace.
 
-### Setting up Copernicus Dataspace Access
+### Setting up openEO Copernicus Dataspace Access
 
 1. **Register for free** at: https://dataspace.copernicus.eu/
-2. **Set environment variables** with your credentials:
-   ```bash
-   export COPERNICUS_USER='your_username'
-   export COPERNICUS_PASSWORD='your_password'
+2. **Authentication Options**:
+   
+   **Option A: Interactive Authentication (Recommended for notebooks)**
+   ```python
+   import openeo
+   conn = openeo.connect("openeo.dataspace.copernicus.eu").authenticate_oidc()
    ```
+   
+   **Option B: OAuth2 Client Credentials (For automated scripts)**
+   - Set up OAuth2 client credentials in your Copernicus Dataspace account
+   - Set environment variables:
+   ```bash
+   export OPENEO_CLIENT_ID='your_client_id'
+   export OPENEO_CLIENT_SECRET='your_client_secret'
+   ```
+
 3. **Restart your Python environment** after setting the variables
 
 ### Verification
 
-You can verify your setup by running:
+You can verify your openEO setup by running:
 ```python
-import os
-print("COPERNICUS_USER:", os.getenv('COPERNICUS_USER'))
-print("COPERNICUS_PASSWORD:", "***" if os.getenv('COPERNICUS_PASSWORD') else "Not set")
+import openeo
+conn = openeo.connect("openeo.dataspace.copernicus.eu")
+print("Available collections:", conn.list_collection_ids()[:5])  # Show first 5 collections
 ```
 
 ## Usage
 
-Basic example of change detection workflow:
+### Urban Change Detection with openEO (New!)
+
+For a complete urban change detection workflow using openEO API, see the Jupyter notebook:
+
+```bash
+# Run the New Delhi urban change detection example
+jupyter notebook examples/new_delhi_urban_change_detection.ipynb
+```
+
+This notebook demonstrates:
+- Accessing Sentinel-1 data through openEO API
+- SAR backscatter processing and calibration
+- Multi-temporal change detection for urban development
+- Visualization of urban growth patterns in New Delhi
+
+### Basic Change Detection Workflow
 
 ```python
 from sar4cet import preprocessing, change_detection, visualization
@@ -70,9 +97,8 @@ aoi = [lon_min, lat_min, lon_max, lat_max]  # Bounding box coordinates
 start_date = "2020-01-01"
 end_date = "2020-12-31"
 
-# Download and preprocess Sentinel-1 data
-scenes = preprocessing.download_sentinel1(aoi, start_date, end_date)
-processed_scenes = preprocessing.apply_rtc(scenes)
+# Process SAR data using simulated data (real download functionality removed)
+processed_scenes = preprocessing.simulate_sample_data()
 
 # Detect changes
 changes = change_detection.detect_changes(processed_scenes, method='omnibus')
