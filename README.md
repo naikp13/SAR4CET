@@ -87,6 +87,22 @@ This notebook demonstrates:
 - Multi-temporal change detection for urban development
 - Visualization of urban growth patterns in New Delhi
 
+### Flood Impact Assessment with openEO (New!)
+
+For flood impact assessment using SAR change detection, see the Jupyter notebook:
+
+```bash
+# Run the Emilia Romagna flood assessment example
+jupyter notebook examples/emilia_romagna_flood_assessment.ipynb
+```
+
+This notebook demonstrates:
+- Flood detection using Sentinel-1 SAR data via openEO API
+- Pre-flood vs post-flood backscatter analysis
+- Water body identification through specular reflection detection
+- Comparison with reference periods for anomaly detection
+- Comprehensive flood impact visualization and assessment
+
 ### Basic Change Detection Workflow
 
 ```python
