@@ -15,7 +15,7 @@ SAR4CET is repository developed under the Plan4CET project (https://plan4cet.eu/
   - Deforestation detection
   - Flood mapping
   - Disaster assessment
-  - Urban change detection notebook for New Delhi using openEO API
+  - Building Height estimation using High-res SAR
 
 ## Installation
 
