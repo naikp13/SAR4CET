@@ -1,6 +1,6 @@
 # SAR4CET - Synthetic Aperture Radar to support Clean Energy Transition 
 
-SAR4CET is repository developed under the Plan4CET project (https://plan4cet.eu/) at the Insitute for Renewable Energy, EURAC Research. It provides is a toolkit for automated change detection using primarily Sentinel-1 SAR data and a scope of integration with other remote sensing modalities to impro...
+SAR4CET is repository developed under the Plan4CET project (https://plan4cet.eu/) at the Insitute for Renewable Energy, EURAC Research. It provides is a toolkit for automated change detection using primarily Sentinel-1 SAR data and a scope of integration with other remote sensing modalities (optical, multispectral, hyperspectral) to support clean energy transition goals.
 
 <img src="https://raw.githubusercontent.com/naikp13/SAR4CET/master/plan4cet.png" alt="plan4cet" width="800"/>
 
@@ -15,11 +15,7 @@ SAR4CET is repository developed under the Plan4CET project (https://plan4cet.eu/
   - Deforestation detection
   - Flood mapping
   - Disaster assessment
-- Oil reservoir monitoring capabilities:
-  - Storage tank volume estimation and change detection
-  - Traffic and logistics activity analysis
-  - Operational anomaly detection
-- **New**: Urban change detection notebook for New Delhi using openEO API
+  - Urban change detection notebook for New Delhi using openEO API
 
 ## Installation
 
@@ -122,34 +118,6 @@ changes = change_detection.detect_changes(processed_scenes, method='omnibus')
 # Visualize results
 visualization.plot_changes(changes)
 ```
-
-Example of oil reservoir monitoring:
-
-```python
-from sar4cet import preprocessing, visualization
-from sar4cet.oil_monitoring import estimate_tank_volume, detect_tank_changes, analyze_traffic, detect_anomalies
-
-# Load preprocessed SAR images
-images = [...] # List of preprocessed SAR images
-
-# Estimate oil storage tank volumes
-tank_results = estimate_tank_volume(images[0])
-print(f"Detected {tank_results['count']} tanks")
-
-# Detect changes in tank volumes between two time periods
-tank_changes = detect_tank_changes(images[0], images[-1])
-print(f"Total volume change: {tank_changes['total_volume_change']} cubic meters")
-
-# Analyze traffic patterns around oil facilities
-traffic_results = analyze_traffic(images)
-print(f"Traffic hotspots: {len(traffic_results['traffic_hotspots'])}")
-
-# Detect operational anomalies
-anomalies = detect_anomalies(images, method='isolation_forest')
-print(f"Detected {len(anomalies['anomalies'])} anomalies")
-```
-
-See the `examples` directory for more detailed examples.
 
 ## License
 
