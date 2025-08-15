@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xmlns:gx="http://www.google.com/kml/ext/2.2">
+<GroundOverlay>
+  <name>DT_6186_STD_MRES_HH.tif</name>
+  <Icon>
+    <href>STD_MRES_HH.tif</href>
+    <refreshMode>onInterval</refreshMode>
+    <refreshInterval>86400</refreshInterval>
+    <viewBoundScale>0.75</viewBoundScale>
+  </Icon>
+  <altitude>0</altitude>
+  <altitudeMode>clampToGround</altitudeMode>
+  <gx:LatLonQuad>
+    <coordinates>
+      13.019683,53.300246 13.130040,53.311577 13.116647,53.358792 13.006484,53.347490 
+    </coordinates>
+  </gx:LatLonQuad>
+</GroundOverlay>
+</kml>

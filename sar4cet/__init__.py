@@ -6,4 +6,3 @@ from . import preprocessing
 from . import change_detection
 from . import visualization
 from . import utils
-from . import oil_monitoring
