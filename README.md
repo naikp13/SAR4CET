@@ -15,6 +15,10 @@ SAR4CET is repository developed under the Plan4CET project (https://plan4cet.eu/
   - Deforestation detection
   - Flood mapping
   - Disaster assessment
+- Oil reservoir monitoring capabilities:
+  - Storage tank volume estimation and change detection
+  - Traffic and logistics activity analysis
+  - Operational anomaly detection
 - **New**: Urban change detection notebook for New Delhi using openEO API
 
 ## Installation
