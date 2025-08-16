@@ -908,3 +908,99 @@ def estimate_heights_shadow_analysis(sar_image, building_candidates):
         height_estimates.append(estimated_height)
     
     return height_estimates
+
+# In estimate_building_heights function, replace lines 56-67 with:
+    # Fast preprocessing for better performance
+    processed_img = fast_preprocessing(img_data, detection_sensitivity)
+    
+    # Fast building detection methods
+    if method == 'shadow_analysis':
+        building_candidates = fast_shadow_analysis(processed_img, img_data,
+                                                  min_building_area, max_building_area)
+    elif method == 'multi_scale':
+        # Use fast detection with different thresholds instead of multi-scale
+        candidates_high = fast_building_detection(processed_img, img_data, min_building_area, max_building_area, 'high')
+        candidates_low = fast_building_detection(processed_img, img_data, min_building_area*2, max_building_area, 'low')
+        building_candidates = candidates_high + candidates_low
+        building_candidates = remove_duplicate_candidates(building_candidates)
+    else:  # enhanced_detection or default
+        building_candidates = fast_building_detection(processed_img, img_data,
+                                                     min_building_area, max_building_area,
+                                                     detection_sensitivity)
+
+def fast_preprocessing(sar_image, sensitivity='medium'):
+    """
+    Fast preprocessing using simple filtering and edge detection.
+    """
+    # Convert to dB if needed
+    if np.max(sar_image) > 10:
+        img_db = 10 * np.log10(np.maximum(sar_image, 1e-10))
+    else:
+        img_db = sar_image.copy()
+    
+    # Simple normalization
+    img_normalized = cv2.normalize(img_db, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    
+    # Single fast filter instead of multiple bilateral filters
+    filtered = cv2.medianBlur(img_normalized, 5)
+    
+    # Simple edge detection
+    edges = cv2.Canny(filtered, 50, 150)
+    
+    return {
+        'original': img_normalized,
+        'filtered': filtered,
+        'edges': edges
+    }
+
+def fast_building_detection(processed_images, original_image, min_area=25, max_area=10000, sensitivity='medium'):
+    """
+    Fast building detection using simple thresholding and morphology.
+    """
+    filtered_img = processed_images['filtered']
+    
+    # Simple adaptive threshold based on sensitivity
+    if sensitivity == 'high':
+        threshold_percentile = 75
+    elif sensitivity == 'low':
+        threshold_percentile = 90
+    else:
+        threshold_percentile = 82
+    
+    # Single threshold-based detection
+    threshold = np.percentile(filtered_img, threshold_percentile)
+    binary = filtered_img > threshold
+    
+    # Simple morphological cleanup
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    
+    # Extract candidates
+    candidates = extract_candidates_from_binary(binary, original_image, min_area, max_area, 'fast')
+    
+    return candidates
+
+def fast_shadow_analysis(processed_images, original_image, min_area=25, max_area=10000):
+    """
+    Fast shadow-based building detection using simple gradient analysis.
+    """
+    filtered_img = processed_images['filtered']
+    
+    # Simple gradient calculation for shadow detection
+    grad_x = cv2.Sobel(filtered_img, cv2.CV_64F, 1, 0, ksize=3)
+    grad_y = cv2.Sobel(filtered_img, cv2.CV_64F, 0, 1, ksize=3)
+    gradient_magnitude = np.sqrt(grad_x**2 + grad_y**2)
+    
+    # Threshold for shadow edges
+    shadow_threshold = np.percentile(gradient_magnitude, 85)
+    shadow_edges = gradient_magnitude > shadow_threshold
+    
+    # Simple morphological operations
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    shadow_regions = cv2.morphologyEx(shadow_edges.astype(np.uint8), cv2.MORPH_CLOSE, kernel)
+    
+    # Extract candidates
+    candidates = extract_candidates_from_binary(shadow_regions, original_image, min_area, max_area, 'shadow')
+    
+    return candidates
