@@ -158,8 +158,22 @@ def enhanced_preprocessing(sar_image, sensitivity='medium'):
     
     # Edge detection using multiple methods
     edges_canny = cv2.Canny(filtered_medium, 50, 150)
+    # Around line 160-162, replace:
+    # edges_sobel = np.sqrt(sobel(filtered_medium, axis=0)**2 + sobel(filtered_medium, axis=1)**2)
+    # edges_sobel = cv2.normalize(edges_sobel, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    
+    # With:
+    # Replace the problematic lines with:
     edges_sobel = np.sqrt(sobel(filtered_medium, axis=0)**2 + sobel(filtered_medium, axis=1)**2)
-    edges_sobel = cv2.normalize(edges_sobel, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    edges_sobel = np.clip(edges_sobel, 0, np.percentile(edges_sobel[np.isfinite(edges_sobel)], 99))
+    edges_sobel = (edges_sobel / edges_sobel.max() * 255).astype(np.uint8) if edges_sobel.max() > 0 else np.zeros_like(edges_sobel, dtype=np.uint8)
+    # Handle NaN and infinite values
+    edges_sobel = np.nan_to_num(edges_sobel, nan=0.0, posinf=255.0, neginf=0.0)
+    # Ensure the array is finite and has valid range
+    if edges_sobel.max() > edges_sobel.min():
+        edges_sobel = ((edges_sobel - edges_sobel.min()) / (edges_sobel.max() - edges_sobel.min()) * 255).astype(np.uint8)
+    else:
+        edges_sobel = np.zeros_like(edges_sobel, dtype=np.uint8)
     
     # Morphological operations for structure enhancement
     kernel_small = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
