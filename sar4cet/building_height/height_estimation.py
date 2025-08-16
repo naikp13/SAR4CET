@@ -14,34 +14,120 @@ from skimage import feature, measure, morphology, filters
 from skimage.segmentation import watershed
 from skimage.feature import peak_local_max  # Fixed: was peak_local_maxima
 
-def estimate_building_heights(sar_image, dem=None, method='enhanced_detection', 
+def ultra_fast_sar_detection(sar_image, min_area=25, max_area=10000, sensitivity='medium'):
+    """
+    Ultra-fast SAR building detection using simple statistical thresholding.
+    Optimized for SAR backscatter characteristics.
+    """
+    # Convert to dB if needed (minimal processing)
+    if np.max(sar_image) > 10:
+        img_db = 10 * np.log10(np.maximum(sar_image, 1e-10))
+    else:
+        img_db = sar_image.copy()
+    
+    # Simple percentile-based thresholding (SAR buildings are bright)
+    if sensitivity == 'high':
+        threshold_pct = 85
+    elif sensitivity == 'low':
+        threshold_pct = 95
+    else:
+        threshold_pct = 90
+    
+    threshold = np.percentile(img_db, threshold_pct)
+    binary = img_db > threshold
+    
+    # Minimal morphology - just remove noise
+    binary = ndimage.binary_opening(binary, structure=np.ones((2,2)))
+    
+    # Extract candidates with minimal processing
+    labeled, num_features = ndimage.label(binary)
+    candidates = []
+    
+    for i in range(1, num_features + 1):
+        mask = labeled == i
+        area = np.sum(mask)
+        
+        if min_area <= area <= max_area:
+            rows, cols = np.where(mask)
+            candidates.append({
+                'id': f'fast_{i}',
+                'mask': mask,
+                'area': area,
+                'bbox': (np.min(rows), np.min(cols), np.max(rows), np.max(cols)),
+                'centroid': (np.mean(rows), np.mean(cols)),
+                'detection_method': 'ultra_fast'
+            })
+    
+    return candidates
+
+def simple_sar_contrast_detection(sar_image, min_area=25, max_area=10000):
+    """
+    Simple contrast-based detection using local statistics.
+    Exploits SAR building-background contrast.
+    """
+    # Minimal preprocessing
+    img_smooth = ndimage.uniform_filter(sar_image, size=3)
+    
+    # Local contrast calculation (buildings have high local contrast)
+    local_std = ndimage.generic_filter(img_smooth, np.std, size=5)
+    
+    # Simple threshold on local contrast
+    contrast_threshold = np.percentile(local_std, 88)
+    binary = local_std > contrast_threshold
+    
+    # Extract candidates
+    labeled, num_features = ndimage.label(binary)
+    candidates = []
+    
+    for i in range(1, num_features + 1):
+        mask = labeled == i
+        area = np.sum(mask)
+        
+        if min_area <= area <= max_area:
+            rows, cols = np.where(mask)
+            candidates.append({
+                'id': f'contrast_{i}',
+                'mask': mask,
+                'area': area,
+                'bbox': (np.min(rows), np.min(cols), np.max(rows), np.max(cols)),
+                'centroid': (np.mean(rows), np.mean(cols)),
+                'detection_method': 'contrast'
+            })
+    
+    return candidates
+
+def minimal_height_estimation(sar_image, candidates):
+    """
+    Ultra-simple height estimation based on SAR intensity.
+    Uses empirical relationship between backscatter and building height.
+    """
+    heights = []
+    
+    for candidate in candidates:
+        mask = candidate['mask']
+        # Mean intensity in building area
+        mean_intensity = np.mean(sar_image[mask])
+        
+        # Simple empirical height estimation (adjust coefficients as needed)
+        # Based on typical SAR building signatures
+        if mean_intensity > np.percentile(sar_image, 95):
+            estimated_height = 15 + (mean_intensity - np.percentile(sar_image, 95)) * 2
+        elif mean_intensity > np.percentile(sar_image, 90):
+            estimated_height = 8 + (mean_intensity - np.percentile(sar_image, 90)) * 1.5
+        else:
+            estimated_height = 3 + (mean_intensity - np.percentile(sar_image, 80)) * 0.8
+        
+        # Clamp to reasonable range
+        estimated_height = max(2, min(50, estimated_height))
+        heights.append(estimated_height)
+    
+    return heights
+
+def estimate_building_heights(sar_image, dem=None, method='ultra_fast', 
                             min_building_area=25, max_building_area=10000,
                             detection_sensitivity='medium'):
     """
-    Estimate building heights from SAR imagery using improved detection algorithms.
-    
-    This implementation uses enhanced preprocessing, multi-scale filtering, and
-    machine learning classification to better detect smaller buildings and urban structures.
-    
-    Parameters
-    ----------
-    sar_image : str or numpy.ndarray
-        Input SAR image
-    dem : str or numpy.ndarray, optional
-        Digital Elevation Model for terrain height correction
-    method : str, optional
-        Height estimation method: 'enhanced_detection', 'shadow_analysis', or 'multi_scale'
-    min_building_area : int, optional
-        Minimum building area in pixels (reduced for smaller buildings)
-    max_building_area : int, optional
-        Maximum building area in pixels
-    detection_sensitivity : str, optional
-        Detection sensitivity: 'low', 'medium', 'high'
-    
-    Returns
-    -------
-    dict
-        Dictionary containing building detections and height estimates
+    Ultra-fast building height estimation for SAR images.
     """
     # Load SAR image
     if isinstance(sar_image, str):
@@ -55,19 +141,13 @@ def estimate_building_heights(sar_image, dem=None, method='enhanced_detection',
         crs = None
     
     print(f"Processing SAR image with shape: {img_data.shape}")
-    print(f"Using method: {method}, sensitivity: {detection_sensitivity}")
+    print(f"Using ultra-fast method: {method}")
     
-    # Enhanced preprocessing for better building detection
-    processed_img = enhanced_preprocessing(img_data, detection_sensitivity)
-    
-    # Multi-scale building detection
-    if method == 'multi_scale':
-        building_candidates = multi_scale_building_detection(processed_img, img_data,
-                                                           min_building_area, max_building_area)
-    else:
-        building_candidates = enhanced_building_detection(processed_img, img_data,
-                                                         min_building_area, max_building_area,
-                                                         detection_sensitivity)
+    # Ultra-fast detection methods
+    if method == 'contrast':
+        building_candidates = simple_sar_contrast_detection(img_data, min_building_area, max_building_area)
+    else:  # 'ultra_fast' or default
+        building_candidates = ultra_fast_sar_detection(img_data, min_building_area, max_building_area, detection_sensitivity)
     
     print(f"Detected {len(building_candidates)} building candidates")
     
@@ -81,45 +161,17 @@ def estimate_building_heights(sar_image, dem=None, method='enhanced_detection',
             'method': method
         }
     
-    # Extract enhanced features for each building candidate
-    building_features = []
-    for candidate in building_candidates:
-        features = extract_enhanced_features(img_data, candidate)
-        building_features.append(features)
+    # Ultra-simple height estimation
+    heights = minimal_height_estimation(img_data, building_candidates)
     
-    # Classify buildings vs non-buildings using machine learning
-    valid_buildings = classify_buildings(building_features, building_candidates)
-    
-    print(f"Classified {len(valid_buildings)} valid buildings")
-    
-    if not valid_buildings:
-        return {
-            'buildings': [],
-            'heights': [],
-            'features': [],
-            'transform': transform,
-            'crs': crs,
-            'method': method
-        }
-    
-    # Estimate heights using the selected method
-    if method == 'shadow_analysis':
-        height_estimates = estimate_heights_shadow_analysis(img_data, valid_buildings)
-    else:
-        height_estimates = estimate_heights_ml_regression(building_features, valid_buildings)
-    
-    # Combine results
-    results = {
-        'buildings': valid_buildings,
-        'heights': height_estimates,
-        'features': [building_features[i] for i in range(len(building_candidates)) 
-                    if building_candidates[i] in valid_buildings],
+    return {
+        'buildings': building_candidates,
+        'heights': heights,
+        'features': [],  # No complex features needed
         'transform': transform,
         'crs': crs,
         'method': method
     }
-    
-    return results
 
 def enhanced_preprocessing(sar_image, sensitivity='medium'):
     """
