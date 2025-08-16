@@ -123,53 +123,166 @@ def minimal_height_estimation(sar_image, candidates):
     
     return heights
 
-def estimate_building_heights(sar_image, dem=None, method='ultra_fast', 
-                            min_building_area=25, max_building_area=10000,
-                            detection_sensitivity='medium'):
+def memory_efficient_sar_detection(sar_image, min_area=25, max_area=1000, chunk_size=512):
     """
-    Ultra-fast building height estimation for SAR images.
+    Memory-efficient SAR building detection using image chunking.
+    Processes large images in smaller chunks to prevent RAM overflow.
     """
-    # Load SAR image
+    import gc
+    
+    # Get image dimensions
     if isinstance(sar_image, str):
         with rasterio.open(sar_image) as src:
+            height, width = src.height, src.width
             img_data = src.read(1)
-            transform = src.transform
-            crs = src.crs
     else:
         img_data = sar_image
-        transform = None
-        crs = None
+        height, width = img_data.shape
     
-    print(f"Processing SAR image with shape: {img_data.shape}")
-    print(f"Using ultra-fast method: {method}")
+    # Process in chunks if image is large
+    if height * width > 1000000:  # > 1M pixels
+        return process_image_chunks(img_data, min_area, max_area, chunk_size)
+    else:
+        return lightweight_detection(img_data, min_area, max_area)
+
+def process_image_chunks(img_data, min_area, max_area, chunk_size):
+    """
+    Process large images in overlapping chunks to manage memory.
+    """
+    import gc
     
-    # Ultra-fast detection methods
-    if method == 'contrast':
-        building_candidates = simple_sar_contrast_detection(img_data, min_building_area, max_building_area)
-    else:  # 'ultra_fast' or default
-        building_candidates = ultra_fast_sar_detection(img_data, min_building_area, max_building_area, detection_sensitivity)
+    height, width = img_data.shape
+    all_candidates = []
+    overlap = 50  # Overlap between chunks
     
-    print(f"Detected {len(building_candidates)} building candidates")
+    for y in range(0, height, chunk_size - overlap):
+        for x in range(0, width, chunk_size - overlap):
+            # Define chunk boundaries
+            y_end = min(y + chunk_size, height)
+            x_end = min(x + chunk_size, width)
+            
+            # Extract chunk
+            chunk = img_data[y:y_end, x:x_end]
+            
+            # Process chunk
+            chunk_candidates = lightweight_detection(chunk, min_area//4, max_area)
+            
+            # Adjust coordinates to global image
+            for candidate in chunk_candidates:
+                bbox = candidate['bbox']
+                candidate['bbox'] = (bbox[0] + y, bbox[1] + x, bbox[2] + y, bbox[3] + x)
+                candidate['centroid'] = (candidate['centroid'][0] + y, candidate['centroid'][1] + x)
+            
+            all_candidates.extend(chunk_candidates)
+            
+            # Force garbage collection
+            del chunk
+            gc.collect()
     
-    if not building_candidates:
-        return {
-            'buildings': [],
-            'heights': [],
-            'features': [],
-            'transform': transform,
-            'crs': crs,
-            'method': method
-        }
+    # Remove duplicates from overlapping regions
+    return remove_overlapping_detections(all_candidates)
+
+def lightweight_detection(img_data, min_area, max_area):
+    """
+    Ultra-lightweight detection using minimal memory.
+    """
+    # Simple percentile threshold (no copies)
+    threshold = np.percentile(img_data, 92)
     
-    # Ultra-simple height estimation
-    heights = minimal_height_estimation(img_data, building_candidates)
+    # In-place operations where possible
+    binary = img_data > threshold
+    
+    # Minimal connected components
+    labeled, num_features = ndimage.label(binary)
+    
+    candidates = []
+    for i in range(1, min(num_features + 1, 100)):  # Limit to 100 candidates
+        mask = labeled == i
+        area = np.sum(mask)
+        
+        if min_area <= area <= max_area:
+            rows, cols = np.where(mask)
+            candidates.append({
+                'id': f'light_{i}',
+                'area': area,
+                'bbox': (np.min(rows), np.min(cols), np.max(rows), np.max(cols)),
+                'centroid': (np.mean(rows), np.mean(cols))
+            })
+    
+    return candidates
+
+def remove_overlapping_detections(candidates, overlap_threshold=0.3):
+    """
+    Remove overlapping detections from chunk processing.
+    """
+    if len(candidates) <= 1:
+        return candidates
+    
+    # Sort by area (keep larger detections)
+    candidates.sort(key=lambda x: x['area'], reverse=True)
+    
+    filtered = []
+    for candidate in candidates:
+        bbox1 = candidate['bbox']
+        is_duplicate = False
+        
+        for existing in filtered:
+            bbox2 = existing['bbox']
+            
+            # Calculate overlap
+            overlap_area = max(0, min(bbox1[2], bbox2[2]) - max(bbox1[0], bbox2[0])) * \
+                          max(0, min(bbox1[3], bbox2[3]) - max(bbox1[1], bbox2[1]))
+            
+            min_area = min(candidate['area'], existing['area'])
+            if overlap_area / min_area > overlap_threshold:
+                is_duplicate = True
+                break
+        
+        if not is_duplicate:
+            filtered.append(candidate)
+    
+    return filtered
+
+def estimate_building_heights(sar_image, dem=None, method='memory_efficient', 
+                            min_building_area=25, max_building_area=1000,
+                            detection_sensitivity='medium'):
+    """
+    Memory-efficient building height estimation.
+    """
+    import gc
+    
+    print(f"Using memory-efficient method: {method}")
+    
+    # Memory-efficient detection
+    if method == 'memory_efficient':
+        building_candidates = memory_efficient_sar_detection(
+            sar_image, min_building_area, max_building_area
+        )
+    else:
+        # Fallback to lightweight detection
+        if isinstance(sar_image, str):
+            with rasterio.open(sar_image) as src:
+                img_data = src.read(1)
+        else:
+            img_data = sar_image
+        
+        building_candidates = lightweight_detection(
+            img_data, min_building_area, max_building_area
+        )
+    
+    print(f"Detected {len(building_candidates)} buildings")
+    
+    # Simple height estimation (minimal memory)
+    heights = [5 + (candidate['area'] / 100) for candidate in building_candidates]
+    heights = [max(2, min(30, h)) for h in heights]  # Clamp to reasonable range
+    
+    # Force garbage collection
+    gc.collect()
     
     return {
         'buildings': building_candidates,
         'heights': heights,
-        'features': [],  # No complex features needed
-        'transform': transform,
-        'crs': crs,
+        'features': [],
         'method': method
     }
 
