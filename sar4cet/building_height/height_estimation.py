@@ -12,7 +12,7 @@ from shapely.geometry import shape
 import geopandas as gpd
 from skimage import feature, measure, morphology, filters
 from skimage.segmentation import watershed
-from skimage.feature import peak_local_maxima
+from skimage.feature import peak_local_max  # Fixed: was peak_local_maxima
 
 def estimate_building_heights(sar_image, dem=None, method='enhanced_detection', 
                             min_building_area=25, max_building_area=10000,
@@ -400,8 +400,10 @@ def watershed_building_detection(filtered_image, original_image, min_area, max_a
     # Distance transform
     distance = ndimage.distance_transform_edt(binary)
     
-    # Find local maxima
-    local_maxima = peak_local_maxima(distance, min_distance=5, threshold_abs=2)
+    # Around line 404, change:
+    # local_maxima = peak_local_maxima(distance, min_distance=5, threshold_abs=2)
+    # To:
+    local_maxima = peak_local_max(distance, min_distance=5, threshold_abs=2)
     markers = np.zeros_like(distance, dtype=int)
     markers[tuple(local_maxima.T)] = np.arange(1, len(local_maxima) + 1)
     
