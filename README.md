@@ -68,7 +68,7 @@ print("Available collections:", conn.list_collection_ids()[:5])  # Show first 5 
 
 ## Usage
 
-### Urban Change Detection with openEO (New!)
+### Urban Change Detection with openEO
 
 For a complete urban change detection workflow using openEO API, see the Jupyter notebook:
 
@@ -83,7 +83,7 @@ This notebook demonstrates:
 - Multi-temporal change detection for urban development
 - Visualization of urban growth patterns in New Delhi
 
-### Flood Impact Assessment with openEO (New!)
+### Flood Impact Assessment with openEO
 
 For flood impact assessment using SAR change detection, see the Jupyter notebook:
 
