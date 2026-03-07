@@ -1,6 +1,6 @@
 # SAR4CET - Synthetic Aperture Radar to support Clean Energy Transition 
 
-SAR4CET is repository developed under the Plan4CET project (https://plan4cet.eu/) at the Insitute for Renewable Energy, EURAC Research. It provides is a toolkit for automated change detection using primarily Sentinel-1 SAR data and a scope of integration with other remote sensing modalities (optical, multispectral, hyperspectral) to support clean energy transition goals.
+SAR4CET is repository developed jointly under the RETURN project (https://www.fondazionereturn.it/en/) and the Plan4CET project (https://plan4cet.eu/) at EURAC Research, Italy. It provides is a toolkit for detection of changes related to climate risk events using primarily Sentinel-1 SAR data with a scope of integration with other modalities (in-situ, climate data, multi-sensing) to support climate risk management and clean energy transition goals.
 
 <img src="https://raw.githubusercontent.com/naikp13/SAR4CET/master/plan4cet.png" alt="plan4cet" width="800"/>
 
